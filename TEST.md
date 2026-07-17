@@ -36,7 +36,7 @@ Só funções puras (sem I/O de rede, sem Telegram, sem `opencode`). Cada teste 
 |---|---|---|
 | `internal/adapter/markdown` | `source_test.go` | Parsing de markdown do career-ops (`parseTableRow`, `cleanStatus`, `extractReportPath`, `parseNotes`, `cleanFollowUpDate`) e os métodos completos de `Source` (`ParseApplications`, `ParsePipeline`, `ParseFollowUps`, `ParseReports`) usando fixtures escritas em `t.TempDir()`. |
 | `internal/adapter/jsonstore` | `store_test.go` | `writeJSON`/`loadJSON` round-trip e arquivo ausente. |
-| `internal/adapter/opencode` | `runner_test.go` | `lastNonEmptyLine`. |
+| `internal/adapter/opencode` | `runner_test.go` | `lastNonEmptyLine`, `logWriter` (acúmulo + escrita fragmentada, streaming linha a linha pro log). |
 | `internal/adapter/telegram` | `util_test.go`, `taskmanager_test.go`, `handlers_test.go` | `isURL`, `parseInt`, `filepathFromCareerOps`; ciclo de vida do `TaskManager` (Start/IsBusy/Get/End, isolamento entre chats) e `AwaitingInput` (Set/Take consumindo a pendência); `emojiForTrackerStatus`, `emojiForTask` (presentation). |
 | `internal/usecase` | `stats_test.go`, `scan_test.go`, `evaluate_test.go` | `ComputeStats`, `StatusOrder`, `extractScanSummary`, `lastNonEmptyLine`. |
 
