@@ -1,0 +1,15 @@
+# Env
+.env
+
+# Dados exportados (gerados via `go run . sync`)
+data/
+
+# Binário compilado
+/telegram-career-bot
+
+# Go
+*.test
+*.out
+
+# OS
+.DS_Store
