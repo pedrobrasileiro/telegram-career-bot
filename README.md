@@ -2,6 +2,11 @@
 
 Bot Telegram para acessar o career-ops pelo celular.
 
+## Dependências
+
+- [career-ops](https://github.com/santifer/career-ops) clonado localmente — fonte dos dados (markdown).
+- **[opencode](https://opencode.ai) CLI instalado e no `PATH`** — o bot não avalia vagas nem roda o scan sozinho; `/scan`, envio de URL e `/ask` disparam `opencode run <prompt>` dentro do diretório do career-ops (`exec.CommandContext`) e dependem 100% dele pra funcionar. Sem o `opencode` no PATH, esses comandos falham.
+
 ## Setup
 
 ```bash
@@ -58,6 +63,8 @@ go run ./cmd/bot sync
 ```bash
 tail -f /tmp/telegram-bot.log
 ```
+
+Todo comando/prompt enviado ao `opencode` é logado (`opencode: executando em ...`), e a saída do `opencode` é logada linha a linha em tempo real conforme chega — não só no final do job. Útil pra acompanhar um `/scan` longo direto no log.
 
 ## Estrutura
 
