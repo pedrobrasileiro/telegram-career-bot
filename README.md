@@ -25,8 +25,8 @@ make build    # Compila o binário
 Ou com `go`:
 
 ```bash
-go run . sync
-go run .
+go run ./cmd/bot sync
+go run ./cmd/bot
 ```
 
 ## Comandos do Bot
@@ -37,6 +37,7 @@ go run .
 | Enviar URL | Auto-pipeline: avalia a vaga |
 | `/scan` | Scan completo (scan.mjs + WebSearch L3) |
 | `/status` | Job ativo e tempo de execução |
+| `/cancel` | Cancela o job em execução (pede confirmação) |
 | `/tracker [status]` | Resumo do tracker (filtro opcional) |
 | `/stats` | Funil completo (ever applied → offer) |
 | `/pipeline` | URLs pendentes |
@@ -49,7 +50,7 @@ go run .
 Após avaliar vagas ou rodar scan, atualize os snapshots:
 
 ```bash
-go run . sync
+go run ./cmd/bot sync
 ```
 
 ## Logs
@@ -60,15 +61,24 @@ tail -f /tmp/telegram-bot.log
 
 ## Estrutura
 
+Clean Architecture: `domain` (entidades) ← `usecase` (regra de negócio, sem I/O) ← `port` (interfaces) ← `adapter` (implementações concretas: Telegram, opencode CLI, markdown, JSON).
+
 ```
 telegram-career-bot/
-  main.go           # Entry: go run . → bot, go run . sync → export
-  bot.go            # Setup telebot + data loaders
-  handlers.go       # Comandos (start, scan, tracker, stats...)
-  parser.go         # Parse markdown → JSON
-  export.go         # Exporta dados do career-ops
-  opencode.go       # Spawna opencode run
-  taskmanager.go    # Jobs em execução (in-memory)
-  config.go         # Config (.env + config.json)
+  cmd/bot/main.go              # Entry: go run ./cmd/bot → bot, sync → export. Monta os adapters e injeta nos usecases.
+
+  internal/
+    config/         # Config (.env + config.json)
+    domain/         # Entidades puras: Application, Pipeline, ReportSummary, Stats, Task...
+    port/           # Interfaces: JobRunner, CareerOpsSource, SnapshotStore, Notifier
+    usecase/        # Regra de negócio: Export, Evaluate, Scan, Ask, TrackerQuery, StatsQuery...
+    adapter/
+      opencode/     # Implementa JobRunner (spawna `opencode run`)
+      markdown/     # Implementa CareerOpsSource (parse markdown → domain)
+      jsonstore/    # Implementa SnapshotStore (data/*.json)
+      telegram/     # Implementa Notifier + registra rotas telebot + formata HTML
+
   data/             # Snapshots JSON (gitignored)
 ```
+
+Ver [CLAUDE.md](CLAUDE.md) pra detalhes de arquitetura e [TEST.md](TEST.md) pra testes.

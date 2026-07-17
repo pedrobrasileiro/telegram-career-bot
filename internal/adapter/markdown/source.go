@@ -1,8 +1,7 @@
-package main
+package markdown
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,98 +9,29 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
+
+	"telegram-career-bot/internal/domain"
 )
 
-type Application struct {
-	Num        int    `json:"num"`
-	Date       string `json:"date"`
-	Company    string `json:"company"`
-	Role       string `json:"role"`
-	Score      string `json:"score"`
-	Status     string `json:"status"`
-	PDF        string `json:"pdf"`
-	ReportPath string `json:"reportPath"`
-	Notes      string `json:"notes"`
-	Via        string `json:"via,omitempty"`
-	Location   string `json:"location,omitempty"`
+// Source implementa port.CareerOpsSource lendo os arquivos markdown do
+// repositório career-ops (data/applications.md, data/pipeline.md,
+// data/follow-ups.md, reports/*.md).
+type Source struct {
+	CareerOpsPath string
 }
 
-type Pipeline struct {
-	Pending   []PipelineItem `json:"pending"`
-	Processed []PipelineItem `json:"processed"`
+func New(careerOpsPath string) Source {
+	return Source{CareerOpsPath: careerOpsPath}
 }
 
-type PipelineItem struct {
-	URL     string `json:"url"`
-	Company string `json:"company"`
-	Title   string `json:"title"`
-}
-
-type FollowUpItem struct {
-	Date    string `json:"date"`
-	Company string `json:"company"`
-	Role    string `json:"role"`
-	Action  string `json:"action"`
-	Notes   string `json:"notes"`
-}
-
-type ReportSummary struct {
-	Num        int    `json:"num"`
-	Title      string `json:"title"`
-	Company    string `json:"company"`
-	Role       string `json:"role"`
-	Filename   string `json:"filename"`
-	Date       string `json:"date"`
-	Score      string `json:"score"`
-	Veredito   string `json:"veredito"`
-	URL        string `json:"url"`
-	Legitimacy string `json:"legitimacy"`
-	Archetype  string `json:"archetype"`
-}
-
-type Stats struct {
-	Total        int            `json:"total"`
-	ByStatus     map[string]int `json:"byStatus"`
-	AverageScore float64        `json:"averageScore"`
-	Funnel       Funnel         `json:"funnel"`
-	ExportedAt   string         `json:"exportedAt"`
-}
-
-type Funnel struct {
-	Total     int `json:"total"`
-	Evaluated int `json:"evaluated"`
-	Applied   int `json:"applied"`
-	Interview int `json:"interview"`
-	Offer     int `json:"offer"`
-	Rejected  int `json:"rejected"`
-	Discarded int `json:"discarded"`
-	Skipped   int `json:"skipped"`
-}
-
-type TrackerData struct {
-	Applications []Application `json:"applications"`
-	ExportedAt   string        `json:"exportedAt"`
-}
-
-type FollowUpData struct {
-	Items      []FollowUpItem `json:"items"`
-	ExportedAt string         `json:"exportedAt"`
-}
-
-type ReportsIndexData struct {
-	Reports    []ReportSummary `json:"reports"`
-	ExportedAt string          `json:"exportedAt"`
-}
-
-func parseApplications(careerOpsPath string) ([]Application, error) {
-	f, err := os.Open(filepath.Join(careerOpsPath, "data", "applications.md"))
+func (s Source) ParseApplications() ([]domain.Application, error) {
+	f, err := os.Open(filepath.Join(s.CareerOpsPath, "data", "applications.md"))
 	if err != nil {
 		return nil, fmt.Errorf("erro abrindo applications.md: %w", err)
 	}
 	defer f.Close()
 
-	var apps []Application
+	var apps []domain.Application
 	scanner := bufio.NewScanner(f)
 	inTable := false
 	colCount := 0
@@ -128,7 +58,7 @@ func parseApplications(careerOpsPath string) ([]Application, error) {
 
 		num, _ := strconv.Atoi(strings.TrimSpace(cols[0]))
 
-		app := Application{
+		app := domain.Application{
 			Num:     num,
 			Date:    strings.TrimSpace(cols[1]),
 			Company: strings.TrimSpace(cols[2]),
@@ -153,61 +83,14 @@ func parseApplications(careerOpsPath string) ([]Application, error) {
 	return apps, scanner.Err()
 }
 
-func parseTableRow(line string, expectedCols int) []string {
-	parts := strings.Split(line, "|")
-	cells := make([]string, 0, expectedCols)
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p == "" && len(cells) == 0 {
-			continue
-		}
-		cells = append(cells, p)
-	}
-	if len(cells) > 0 && cells[len(cells)-1] == "" {
-		cells = cells[:len(cells)-1]
-	}
-	if len(cells) > expectedCols && expectedCols > 0 {
-		last := strings.Join(cells[expectedCols-1:], " | ")
-		cells = append(cells[:expectedCols-1], last)
-	}
-	return cells
-}
-
-func cleanStatus(s string) string {
-	s = strings.TrimPrefix(s, "**")
-	s = strings.TrimSuffix(s, "**")
-	s = strings.TrimSpace(s)
-	return s
-}
-
-func extractReportPath(cell string) string {
-	re := regexp.MustCompile(`\(\.\.?/?(reports/[^)]+)\)`)
-	matches := re.FindStringSubmatch(cell)
-	if len(matches) >= 2 {
-		return matches[1]
-	}
-	return ""
-}
-
-func parseNotes(raw string) (notes, via, location string) {
-	notes = raw
-
-	viaRe := regexp.MustCompile(`via=(\S+)`)
-	if m := viaRe.FindStringSubmatch(raw); len(m) >= 2 {
-		via = m[1]
-	}
-
-	return notes, via, location
-}
-
-func parsePipeline(careerOpsPath string) (*Pipeline, error) {
-	f, err := os.Open(filepath.Join(careerOpsPath, "data", "pipeline.md"))
+func (s Source) ParsePipeline() (*domain.Pipeline, error) {
+	f, err := os.Open(filepath.Join(s.CareerOpsPath, "data", "pipeline.md"))
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	p := &Pipeline{}
+	p := &domain.Pipeline{}
 	re := regexp.MustCompile(`^[-*]\s*\[[ x]\]\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+)$`)
 
 	scanner := bufio.NewScanner(f)
@@ -230,7 +113,7 @@ func parsePipeline(careerOpsPath string) (*Pipeline, error) {
 
 		matches := re.FindStringSubmatch(line)
 		if len(matches) >= 4 {
-			item := PipelineItem{
+			item := domain.PipelineItem{
 				URL:     strings.TrimSpace(matches[1]),
 				Company: strings.TrimSpace(matches[2]),
 				Title:   strings.TrimSpace(matches[3]),
@@ -248,14 +131,14 @@ func parsePipeline(careerOpsPath string) (*Pipeline, error) {
 	return p, scanner.Err()
 }
 
-func parseFollowUps(careerOpsPath string) ([]FollowUpItem, error) {
-	f, err := os.Open(filepath.Join(careerOpsPath, "data", "follow-ups.md"))
+func (s Source) ParseFollowUps() ([]domain.FollowUpItem, error) {
+	f, err := os.Open(filepath.Join(s.CareerOpsPath, "data", "follow-ups.md"))
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	var items []FollowUpItem
+	var items []domain.FollowUpItem
 	scanner := bufio.NewScanner(f)
 	inTable := false
 	colCount := 0
@@ -280,7 +163,7 @@ func parseFollowUps(careerOpsPath string) ([]FollowUpItem, error) {
 			continue
 		}
 
-		item := FollowUpItem{
+		item := domain.FollowUpItem{
 			Date:    "",
 			Company: "",
 		}
@@ -309,18 +192,8 @@ func parseFollowUps(careerOpsPath string) ([]FollowUpItem, error) {
 	return items, scanner.Err()
 }
 
-func cleanFollowUpDate(date string) string {
-	date = strings.TrimPrefix(date, "**")
-	date = strings.TrimSuffix(date, "**")
-	idx := strings.Index(date, "(")
-	if idx > 0 {
-		date = strings.TrimSpace(date[:idx])
-	}
-	return date
-}
-
-func parseReportHeaders(careerOpsPath string) ([]ReportSummary, error) {
-	reportsDir := filepath.Join(careerOpsPath, "reports")
+func (s Source) ParseReports() ([]domain.ReportSummary, error) {
+	reportsDir := filepath.Join(s.CareerOpsPath, "reports")
 	entries, err := os.ReadDir(reportsDir)
 	if err != nil {
 		return nil, err
@@ -337,7 +210,7 @@ func parseReportHeaders(careerOpsPath string) ([]ReportSummary, error) {
 	filenameNumRe := regexp.MustCompile(`^(\d+)-`)
 	filenameDateRe := regexp.MustCompile(`(\d{4}-\d{2}-\d{2})\.md$`)
 
-	var reports []ReportSummary
+	var reports []domain.ReportSummary
 
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
@@ -349,7 +222,7 @@ func parseReportHeaders(careerOpsPath string) ([]ReportSummary, error) {
 			continue
 		}
 
-		var r ReportSummary
+		var r domain.ReportSummary
 		r.Filename = entry.Name()
 
 		if m := filenameNumRe.FindStringSubmatch(entry.Name()); len(m) >= 2 {
@@ -432,52 +305,59 @@ func parseReportHeaders(careerOpsPath string) ([]ReportSummary, error) {
 	return reports, nil
 }
 
-func computeStats(apps []Application) Stats {
-	now := time.Now().Format("2006-01-02")
-	s := Stats{
-		ExportedAt: now,
-		ByStatus:   make(map[string]int),
-	}
-
-	var totalScore float64
-	var scoreCount int
-
-	for _, a := range apps {
-		s.Total++
-		s.ByStatus[a.Status]++
-
-		scoreStr := strings.TrimSuffix(a.Score, "/5")
-		if score, err := strconv.ParseFloat(scoreStr, 64); err == nil {
-			totalScore += score
-			scoreCount++
+func parseTableRow(line string, expectedCols int) []string {
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, expectedCols)
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" && len(cells) == 0 {
+			continue
 		}
+		cells = append(cells, p)
 	}
-
-	if scoreCount > 0 {
-		s.AverageScore = totalScore / float64(scoreCount)
+	if len(cells) > 0 && cells[len(cells)-1] == "" {
+		cells = cells[:len(cells)-1]
 	}
-
-	s.Funnel = Funnel{
-		Total:     s.Total,
-		Evaluated: s.ByStatus["Evaluated"],
-		Applied:   s.ByStatus["Applied"],
-		Interview: s.ByStatus["Interview"],
-		Offer:     s.ByStatus["Offer"],
-		Rejected:  s.ByStatus["Rejected"],
-		Discarded: s.ByStatus["Discarded"],
-		Skipped:   s.ByStatus["SKIP"],
+	if len(cells) > expectedCols && expectedCols > 0 {
+		last := strings.Join(cells[expectedCols-1:], " | ")
+		cells = append(cells[:expectedCols-1], last)
 	}
+	return cells
+}
 
+func cleanStatus(s string) string {
+	s = strings.TrimPrefix(s, "**")
+	s = strings.TrimSuffix(s, "**")
+	s = strings.TrimSpace(s)
 	return s
 }
 
-func writeJSON(path string, v interface{}) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
+func extractReportPath(cell string) string {
+	re := regexp.MustCompile(`\(\.\.?/?(reports/[^)]+)\)`)
+	matches := re.FindStringSubmatch(cell)
+	if len(matches) >= 2 {
+		return matches[1]
 	}
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
+	return ""
+}
+
+func parseNotes(raw string) (notes, via, location string) {
+	notes = raw
+
+	viaRe := regexp.MustCompile(`via=(\S+)`)
+	if m := viaRe.FindStringSubmatch(raw); len(m) >= 2 {
+		via = m[1]
 	}
-	return os.WriteFile(path, data, 0644)
+
+	return notes, via, location
+}
+
+func cleanFollowUpDate(date string) string {
+	date = strings.TrimPrefix(date, "**")
+	date = strings.TrimSuffix(date, "**")
+	idx := strings.Index(date, "(")
+	if idx > 0 {
+		date = strings.TrimSpace(date[:idx])
+	}
+	return date
 }

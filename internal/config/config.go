@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"bufio"
@@ -25,7 +25,7 @@ type configFile struct {
 	Language      string `json:"language"`
 }
 
-func loadConfig() (*Config, error) {
+func Load() (*Config, error) {
 	loadDotEnv()
 
 	cfg := &Config{
